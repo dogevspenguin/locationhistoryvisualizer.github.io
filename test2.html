@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Heatmap Visualization</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/gh/Leaflet/Leaflet.heat@gh-pages/dist/leaflet-heat.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <style>
+    body, html {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      overflow: hidden;
+      background: linear-gradient(135deg, #1a2a6c, #b21f1f, #1a2a6c);
+    }
+    #map {
+      width: 100%;
+      height: 100%;
+      position: absolute;
+    }
+    .leaflet-heatmap-layer {
+      opacity: 1.0;
+    }
+    #controls {
+      position: absolute;
+      top: 50px;
+      left: 60px;
+      z-index: 1000;
+      background: rgba(25, 25, 35, 0.85);
+      padding: 15px;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+      backdrop-filter: blur(5px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: #fff;
+      max-width: 300px;
+    }
+    #controls h3 {
+      margin: 0 0 15px 0;
+      color: #fff;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+      padding-bottom: 8px;
+    }
+    .control-group {
+      margin-bottom: 15px;
+    }
+    #controls label {
+      display: block;
+      margin-bottom: 5px;
+      font-size: 14px;
+      font-weight: 500;
+    }
+    #controls input[type="number"] {
+      width: 100%;
+      padding: 8px;
+      border-radius: 4px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      background: rgba(20, 20, 30, 0.8);
+      color: white;
+      font-size: 14px;
+    }
+    #fileInput {
+      margin-top: 8px;
+      width: 100%;
+      padding: 8px 0;
+    }
+    
+    .button {
+      display: inline-block;
+      background: #4a6fa5;
+      color: white;
+      padding: 8px 15px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      border: none;
+      margin-top: 5px;
+      transition: all 0.3s;
+      text-align: center;
+    }
+    .button:hover {
+      background: #5a8fdd;
+      transform: translateY(-2px);
+    }
+    .button.secondary {
+      background: #5a6268;
+    }
+    .color-scale {
+      display: flex;
+      margin-top: 10px;
+      height: 20px;
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .color-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      margin-top: 5px;
+    }
+    .info-panel {
+      position: absolute;
+      bottom: 15px;
+      left: 60px;
+      z-index: 1000;
+      background: rgba(25, 25, 35, 0.85);
+      padding: 15px;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+      backdrop-filter: blur(5px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: #fff;
+      max-width: 300px;
+    }
+    .legend {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      margin-top: 10px;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      font-size: 13px;
+    }
+    .legend-color {
+      width: 20px;
+      height: 15px;
+      margin-right: 8px;
+      border-radius: 3px;
+    }
+    .title-bar {
+      position: absolute;
+      top: 0;
+      left: 60px;
+      width: 100%;
+      background: rgba(15, 15, 25, 0.9);
+      color: white;
+      text-align: center;
+      padding: 12px 0;
+      z-index: 1001;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+      font-size: 1.2em;
+      font-weight: 600;
+      letter-spacing: 1px;
+    }
+    .mode-indicator {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 10px;
+      background: #4CAF50;
+      margin-left: 8px;
+      font-size: 0.8em;
+    }
+    .mode-indicator.local {
+      background: #FF9800;
+    }
+    .heatmap-options {
+      margin-top: 15px;
+      padding-top: 15px;
+      border-top: 1px solid rgba(255,255,255,0.1);
+    }
+    .slider-container {
+      display: flex;
+      align-items: center;
+      margin-top: 8px;
+    }
+    .slider-container label {
+      width: 120px;
+      font-size: 13px;
+    }
+    .slider-container input[type="range"] {
+      flex: 1;
+    }
+    .slider-value {
+      width: 40px;
+      text-align: right;
+      margin-left: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="title-bar">Heatmap Visualization <span class="mode-indicator global">Global Mode</span></div>
+  <div id="map"></div>
+
+  <div id="controls">
+    <h3>Heatmap Controls</h3>
+    
+    <div class="control-group">
+      <label for="fileInput">Load Data</label>
+      <input type="file" id="fileInput" accept=".json, .csv" />
+      <div class="button" id="sampleDataBtn">Load Sample Data</div>
+    </div>
+    
+    <div class="control-group">
+      <label>Color Scale</label>
+      <div class="color-scale">
+        <div style="flex:1; background: rgba(0, 0, 255, 0.6)"></div>
+        <div style="flex:1; background: rgba(0, 128, 255, 0.6)"></div>
+        <div style="flex:1; background: rgba(0, 255, 255, 0.6)"></div>
+        <div style="flex:1; background: rgba(0, 255, 128, 0.6)"></div>
+        <div style="flex:1; background: rgba(255, 255, 0, 0.6)"></div>
+        <div style="flex:1; background: rgba(255, 128, 0, 0.6)"></div>
+        <div style="flex:1; background: rgba(255, 0, 0, 0.6)"></div>
+      </div>
+      <div class="color-label">
+        <span>Low</span>
+        <span>High</span>
+      </div>
+    </div>
+    
+    <div class="control-group">
+
+      <div class="button" id="satelliteBtn">Satellite View</div>
+    </div>
+    
+    <div class="heatmap-options">
+      <h4>Heatmap Settings</h4>
+      
+      <div class="slider-container">
+        <label for="radiusSlider">Point Radius:</label>
+        <input type="range" id="radiusSlider" min="5" max="50" value="20" />
+        <span id="radiusValue" class="slider-value">20</span>
+      </div>
+      
+      <div class="slider-container">
+        <label for="blurSlider">Blur Amount:</label>
+        <input type="range" id="blurSlider" min="1" max="30" value="15" />
+        <span id="blurValue" class="slider-value">15</span>
+      </div>
+      
+      <div class="slider-container">
+        <label for="opacitySlider">Opacity:</label>
+        <input type="range" id="opacitySlider" min="1" max="100" value="100" />
+        <span id="opacityValue" class="slider-value">1.0</span>
+      </div>
+      <div class="slider-container">
+        <label for="boundSlider">Max Intensity (hrs):</label>
+        <input type="range" id="boundSlider" min="1" max="100" value="1" />
+        <span id="boundValue" class="slider-value">1</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="info-panel">
+    <h3>Data Information</h3>
+    <p id="dataInfo">No data loaded. Please load a JSON/CSV file.</p>
+    <div class="legend">
+      <div class="legend-item">
+        <div class="legend-color" style="background: rgba(0, 0, 255, 0.6)"></div>
+        <span>Low activity</span>
+      </div>
+      <div class="legend-item">
+        <div class="legend-color" style="background: rgba(255, 0, 0, 0.6)"></div>
+        <span>High activity</span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Initialize Leaflet map centered at [30, 0] with zoom level 2
+    const map = L.map('map').setView([30, 0], 2);
+
+    // Data storage: array of {lat, lng, duration}
+    let dataPoints = [];
+    let heatLayer = null;
+    // maxValue is in SECONDS for Leaflet.heat, but the slider will be in HOURS
+    let maxValue = 3600; // Default to 1 hour
+    
+    // Heatmap settings
+    let heatmapSettings = {
+      radius: 20,
+      blur: 15,
+      maxOpacity: 0.6,
+      minOpacity: 0.1,
+      gradient: {
+        0.15: 'rgba(0, 0, 255, 0.6)',
+        0.3: 'rgba(0, 128, 255, 0.6)',
+        0.45: 'rgba(0, 255, 255, 0.6)',
+        0.6: 'rgba(0, 255, 128, 0.6)',
+        0.75: 'rgba(255, 255, 0, 0.6)',
+        0.9: 'rgba(255, 128, 0, 0.6)',
+        1.0: 'rgba(255, 0, 0, 0.6)'
+      }
+    };
+    
+    // Base layers
+    const baseLayers = {
+      "Street": L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '&copy; OpenStreetMap contributors'
+      }),
+      "Satellite": L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        attribution: 'Tiles © Esri'
+      })
+    };
+
+    // Set initial base layer
+    baseLayers["Street"].addTo(map);
+
+    // Satellite view button
+    document.getElementById('satelliteBtn').addEventListener('click', function() {
+      if (map.hasLayer(baseLayers["Street"])) {
+        map.removeLayer(baseLayers["Street"]);
+        baseLayers["Satellite"].addTo(map);
+        this.textContent = "Street View";
+      } else {
+        map.removeLayer(baseLayers["Satellite"]);
+        baseLayers["Street"].addTo(map);
+        this.textContent = "Satellite View";
+      }
+    });
+
+    // Create heatmap layer
+    function createHeatLayer() {
+      if (heatLayer) {
+        heatLayer.remove();
+      }
+      
+      const heatPoints = dataPoints.map(pt => [pt.lat, pt.lng, pt.duration || 1]);
+      
+      heatLayer = L.heatLayer(heatPoints, {
+        radius: heatmapSettings.radius,
+        blur: heatmapSettings.blur,
+        max: maxValue,
+        minOpacity: heatmapSettings.minOpacity,
+        maxOpacity: heatmapSettings.maxOpacity,
+        gradient: heatmapSettings.gradient
+      }).addTo(map);
+    }
+
+    // Update data info display
+    function updateDataInfo() {
+      const info = document.getElementById('dataInfo');
+      if (dataPoints.length === 0) {
+        info.innerHTML = 'No data loaded. Please load a file.';
+        return;
+      }
+      
+      let minLat = Infinity, maxLat = -Infinity;
+      let minLng = Infinity, maxLng = -Infinity;
+      let totalDuration = 0;
+      
+      dataPoints.forEach(pt => {
+        minLat = Math.min(minLat, pt.lat);
+        maxLat = Math.max(maxLat, pt.lat);
+        minLng = Math.min(minLng, pt.lng);
+        maxLng = Math.max(maxLng, pt.lng);
+        totalDuration += pt.duration || 1;
+      });
+      
+      info.innerHTML = `
+        <strong>${dataPoints.length.toLocaleString()}</strong> aggregated points<br>
+        <strong>${(totalDuration / 3600).toFixed(2)} hours</strong> total duration<br>
+        Bounds: ${minLat.toFixed(2)}° to ${maxLat.toFixed(2)}° lat, 
+        ${minLng.toFixed(2)}° to ${maxLng.toFixed(2)}° lng<br>
+        Max Intensity: ${(maxValue / 3600).toFixed(1)} hours
+      `;
+    }
+
+    // File input handler
+    document.getElementById('fileInput').addEventListener('change', function (e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function (evt) {
+        const content = evt.target.result;
+        if (file.name.endsWith('.csv')) {
+          Papa.parse(content, {
+            header: true,
+            dynamicTyping: true,
+            skipEmptyLines: true,
+            complete: function (results) {
+              const rawPoints = parseCSV(results.data);
+              processAndVisualizeData(rawPoints);
+            },
+            error: function (err) {
+              alert('Failed to parse CSV: ' + err.message);
+            }
+          });
+        } else if (file.name.endsWith('.json')) {
+            try {
+                const json = JSON.parse(content);
+                const rawPoints = parseTimelineJSON(json);
+                processAndVisualizeData(rawPoints);
+            } catch (err) {
+                alert('Invalid JSON file.');
+                return;
+            }
+        } else {
+            alert('Unsupported file type. Please load a CSV or JSON file.');
+        }
+      };
+      reader.readAsText(file);
+    });
+
+    // Load sample data
+    document.getElementById('sampleDataBtn').addEventListener('click', function() {
+      const rawPoints = generateSampleData(1500);
+      processAndVisualizeData(rawPoints);
+    });
+
+    // Parses Google Timeline JSON and returns raw points
+    function parseTimelineJSON(json) {
+        const rawPoints = [];
+        const segments = json.timelineObjects || [];
+        segments.forEach((segment) => {
+            let lat, lon, duration = 0;
+            if (segment.placeVisit) {
+                const visit = segment.placeVisit;
+                if(visit.location && visit.location.latitudeE7 && visit.location.longitudeE7 && visit.duration && visit.duration.startTimestamp && visit.duration.endTimestamp){
+                    lat = visit.location.latitudeE7 / 1e7;
+                    lon = visit.location.longitudeE7 / 1e7;
+                    const start = new Date(visit.duration.startTimestamp).getTime();
+                    const end = new Date(visit.duration.endTimestamp).getTime();
+                    duration = (end - start) / 1000; // seconds
+                    if(duration > 0) rawPoints.push({ lat: lat, lng: lon, duration: duration });
+                }
+            } else if (segment.activitySegment) {
+                const activity = segment.activitySegment;
+                if(activity.startLocation && activity.endLocation && activity.duration && activity.duration.startTimestamp && activity.duration.endTimestamp){
+                    lat = activity.startLocation.latitudeE7 / 1e7;
+                    lon = activity.startLocation.longitudeE7 / 1e7;
+                    const start = new Date(activity.duration.startTimestamp).getTime();
+                    const end = new Date(activity.duration.endTimestamp).getTime();
+                    duration = (end - start) / 1000; // seconds
+                    if(duration > 0) rawPoints.push({ lat: lat, lng: lon, duration: duration });
+                }
+            }
+        });
+        return rawPoints;
+    }
+
+    // Parses custom CSV and returns raw points
+    function parseCSV(rows) {
+        const rawPoints = [];
+        if (rows.length < 2) return rawPoints;
+
+        rows.sort((a, b) => new Date(a.time) - new Date(b.time));
+        for (let i = 0; i < rows.length - 1; i++) {
+            const row1 = rows[i];
+            const row2 = rows[i + 1];
+            const lat = parseFloat(row1.lat);
+            const lon = parseFloat(row1.lon);
+            if (isNaN(lat) || isNaN(lon) || !row1.time || !row2.time) continue;
+
+            const time1 = new Date(row1.time).getTime();
+            const time2 = new Date(row2.time).getTime();
+            const duration = (time2 - time1) / 1000;
+            if (duration > 0) {
+                rawPoints.push({ lat: lat, lng: lon, duration: duration });
+            }
+        }
+        return rawPoints;
+    }
+    
+    // Aggregates raw points, updates UI, and creates heatmap
+    function processAndVisualizeData(rawPoints) {
+        const aggregatedPoints = new Map();
+        const precision = 4; // Group points within ~11 meters
+
+        rawPoints.forEach(point => {
+            if (point.duration > 3600 * 8) return; // Ignore single segments longer than 8 hours
+            const key = `${point.lat.toFixed(precision)}_${point.lng.toFixed(precision)}`;
+            if (!aggregatedPoints.has(key)) {
+                aggregatedPoints.set(key, { lat: point.lat, lng: point.lng, duration: 0 });
+            }
+            aggregatedPoints.get(key).duration += point.duration;
+        });
+        
+        dataPoints = Array.from(aggregatedPoints.values());
+
+        if (dataPoints.length > 0) {
+            const bounds = L.latLngBounds(dataPoints.map(p => [p.lat, p.lng]));
+            map.fitBounds(bounds, { padding: [50, 50] });
+
+            const maxDurationSeconds = Math.max(...dataPoints.map(p => p.duration));
+            const maxDurationHours = maxDurationSeconds / 3600;
+            
+            const boundSlider = document.getElementById('boundSlider');
+            const boundValue = document.getElementById('boundValue');
+            
+            const sliderMax = Math.ceil(maxDurationHours);
+            boundSlider.max = sliderMax > 0 ? sliderMax : 1;
+            boundSlider.value = sliderMax;
+            boundValue.textContent = sliderMax.toFixed(1);
+            maxValue = sliderMax * 3600;
+        }
+
+        updateDataInfo();
+        createHeatLayer();
+    }
+
+    // Generate sample data for demonstration
+    function generateSampleData(count) {
+      const points = [];
+      const centers = [
+        {lat: 40.7128, lng: -74.0060}, // New York
+        {lat: 34.0522, lng: -118.2437}, // Los Angeles
+        {lat: 51.5074, lng: -0.1278},   // London
+        {lat: 35.6895, lng: 139.6917},  // Tokyo
+        {lat: -33.8688, lng: 151.2093}  // Sydney
+      ];
+      
+      for (let i = 0; i < count; i++) {
+        const center = centers[Math.floor(Math.random() * centers.length)];
+        const lat = center.lat + (Math.random() - 0.5) * 15;
+        const lng = center.lng + (Math.random() - 0.5) * 30;
+        const duration = Math.floor(Math.random() * 3600) + 60; // 1 min to 1 hour
+        
+        points.push({
+          lat: lat,
+          lng: lng,
+          duration: duration
+        });
+      }
+      return points;
+    }
+    
+    // Update heatmap settings from sliders
+    document.getElementById('radiusSlider').addEventListener('input', function() {
+      heatmapSettings.radius = parseInt(this.value);
+      document.getElementById('radiusValue').textContent = this.value;
+      if(dataPoints.length > 0) createHeatLayer();
+    });
+    
+    document.getElementById('blurSlider').addEventListener('input', function() {
+      heatmapSettings.blur = parseInt(this.value);
+      document.getElementById('blurValue').textContent = this.value;
+      if(dataPoints.length > 0) createHeatLayer();
+    });
+    
+    document.getElementById('opacitySlider').addEventListener('input', function() {
+      const opacity = parseInt(this.value) / 100;
+      heatmapSettings.maxOpacity = opacity;
+      
+      document.getElementById('opacityValue').textContent = opacity.toFixed(1);
+      if(dataPoints.length > 0) createHeatLayer();
+    });
+
+    document.getElementById('boundSlider').addEventListener('input', function() {
+      const hours = parseInt(this.value);
+      maxValue = hours * 3600; // Convert hours to seconds
+      document.getElementById('boundValue').textContent = hours.toFixed(1);
+      if(dataPoints.length > 0) {
+        createHeatLayer();
+        updateDataInfo();
+      }
+    });
+
+    // Initialize with sample data for demonstration
+    setTimeout(() => {
+      const rawPoints = generateSampleData(1500);
+      processAndVisualizeData(rawPoints);
+    }, 500);
+  </script>
+</body>
+</html>
